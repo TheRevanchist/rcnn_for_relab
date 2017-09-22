@@ -14,7 +14,7 @@ from test2 import *
 
 repo_of_ground_truth = '/home/revan/VOCdevkit/VOC2007/Annotations'
 repo_of_images = '/home/revan/VOCdevkit/VOC2007/JPEGImages'
-train_set = '/home/revan/VOCdevkit/VOC2007/ImageSets/Main/test.txt'
+train_set = '/home/revan/VOCdevkit/VOC2007/ImageSets/Main/trainval.txt'
 
 classes_dict = {'__background__': 0, 'aeroplane': 1, 'bicycle': 2, 'bird': 3, 'boat': 4, 'bottle': 5, 'bus': 6, 'car': 7,
            'cat': 8, 'chair': 9, 'cow': 10, 'diningtable': 11, 'dog': 12, 'horse': 13, 'motorbike': 14,
@@ -31,34 +31,61 @@ vis = False
 
 
 def main():
-    content = get_filenames_of_training_set(train_set)
-    print(len(content))
-    p, gt, all_width_and_height = create_p_and_gt(content, repo_of_images, classes_dict)
-    with open('p_test.pickle', 'wb') as f:
-        # Pickle p data structure using the highest protocol available.
-        pickle.dump(p, f, pickle.HIGHEST_PROTOCOL)
-    with open('gt_test.pickle', 'wb') as f:
-        # Pickle gt data structure using the highest protocol available.
-        pickle.dump(gt, f, pickle.HIGHEST_PROTOCOL)
-    with open('width_and_height_test.pickle', 'wb') as f:
-        # Pickle gt data structure using the highest protocol available.
-        pickle.dump(all_width_and_height, f, pickle.HIGHEST_PROTOCOL)
-    with open('i_over_u_test.pickle', 'wb') as f:
-        # Pickle gt data structure using the highest protocol available.
-        pickle.dump(gt, f, pickle.HIGHEST_PROTOCOL)
+    # content = get_filenames_of_training_set(train_set)
+    # p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict)
+    #
+    # # dump data structures into pickle files
+    # with open('p_trainval.pickle', 'wb') as f:
+    #     pickle.dump(p, f, pickle.HIGHEST_PROTOCOL)
+    # with open('gt_trainval.pickle', 'wb') as f:
+    #     pickle.dump(gt, f, pickle.HIGHEST_PROTOCOL)
+    # with open('width_and_height_traival.pickle', 'wb') as f:
+    #     pickle.dump(width_and_height, f, pickle.HIGHEST_PROTOCOL)
 
     # load the pickle files
-    with open('p_test.pickle', 'rb') as f:
-        p = pickle.load(f)
-    with open('gt_test.pickle', 'rb') as f:
-        gt = pickle.load(f)
-    with open('width_and_height_test.pickle', 'rb') as f:
-        all_width_and_height = pickle.load(f)
-    with open('i_over_u_test.pickle', 'rb') as f:
-        all_i_over_u = pickle.load(f)
+    # with open('p_trainval.pickle', 'rb') as f:
+    #     p = pickle.load(f)
+    # with open('gt_trainval.pickle', 'rb') as f:
+    #     gt = pickle.load(f)
+    # with open('width_and_height_traival.pickle', 'rb') as f:
+    #     width_and_height = pickle.load(f)
+    #
+    # # do the matching between rcnn results and the ground truth
+    # info_all_images = postprocess_all_images(p, gt, width_and_height)
+    #
+    # # pickle the final data structure
+    # with open('info_all_images_trainval.pickle', 'wb') as f:
+    #     pickle.dump(info_all_images, f, pickle.HIGHEST_PROTOCOL)
 
-    p_and_gt = postprocess(p, gt, all_width_and_height)
-    print("meh")
+    # load the final data structure
+    with open('info_all_images_trainval.pickle', 'rb') as f:
+        info_all_images = pickle.load(f)
+
+    print("Done")
+
+
+def remove_background(p):
+    """
+    This function removes the background class, by spreading its probability over all other classes
+    :param p: representation of the class as a probability function (final 4 elements are spatial dimensions)
+    :return:
+            new_p: representation of the class as a probability function with background removed
+            new_rect: the bounding box
+    """
+    new_p = []
+    new_rect = []
+    for i in xrange(len(p)):
+        if len(p[i]) > 0:
+            probs = p[i][:, 1:21]
+            probs /= np.sum(probs, axis=1)[:, np.newaxis]
+            rects = p[i][:, 21:]
+            new_p.append(probs)
+            new_rect.append(rects)
+        else:
+            new_p.append(np.zeros((0, 0)))
+            new_rect.append(np.zeros((0, 0)))
+    return new_p, new_rect
+
 
 
 def get_filenames_of_training_set(train_set):
@@ -146,12 +173,22 @@ def test_net(name, net, imdb, im, max_per_image=300, thresh=0.3, vis=False):
     all_scores = scores[to_keep]
     class_boxes = np.zeros((len(all_class_boxes), 5))
     for whatever in range(len(all_class_boxes)):
-        class_boxes[whatever] = all_class_boxes[whatever][0]
-    print(all_scores.shape[0] == class_boxes.shape[0])
+        class_boxes[whatever] = all_class_boxes[whatever]
     return all_scores, class_boxes
 
 
 def create_p_and_gt(content, repo_of_images, dict):
+    """
+    This function creates initial p and gt based on the output of the r-cnn and the ground truth
+    :param content: a list containing the names of the images
+    :param repo_of_images: the repository of the images
+    :param dict: a dictionary where as key are names of the classes, and as values are an enumeration of them
+    :return:
+            rcnn_output: the representation given by rcnn
+            ground_truth: the representation gotten from the ground truth
+            all_width_and_height: width and the height of the image (read from xml files)
+    """
+
 
     rcnn_output = []
     ground_truth = []
@@ -181,6 +218,12 @@ def create_p_and_gt(content, repo_of_images, dict):
 
 
 def bb_intersection_over_union(boxA, boxB):
+    """
+    This function does intersection over union between two bounding boxes
+    :param boxA: box x1 represented as [min_x1, min_y1, max_x1, max_y1]
+    :param boxB: box x2 represented as [min_x2, min_y2, max_x2, max_y2
+    :return: iou: intersection over union - a number between 0 and 1
+    """
     # determine the (x, y)-coordinates of the intersection rectangle
     xA = max(boxA[0], boxB[0])
     yA = max(boxA[1], boxB[1])
@@ -204,65 +247,107 @@ def bb_intersection_over_union(boxA, boxB):
     return iou
 
 
-def postprocess(p, gt, all_width_and_height):
+def postprocess(p, gt, width_and_height):
+    """
+    This function does matching and then postprocessing of p's and gt's
+    :param p:
+    :param gt:
+    :param width_and_height:
+    :return:
+    """
+    len_p = len(p)
+    len_gt = len(gt)
+    elements_in_p = [i for i in xrange(len_p)]
+    elements_in_gt = [i for i in xrange(len_gt)]
+
+    matching_table = create_matching_table(p, gt)
+    max_number_of_matches = min(matching_table.shape[0], matching_table.shape[1])
+    new_p = []
+    new_gt = []
+    new_rects_p = []
+    new_rects_gt = []
+
+    # on this part we create the real matches between p and gt
+    for _ in xrange(max_number_of_matches):
+        best_match = unravel_index(matching_table.argmax(), matching_table.shape)
+        if matching_table[best_match[0], best_match[1]]: # check if it is a different value from 0
+            matching_table[best_match[0], :] = 0.
+            matching_table[:, best_match[1]] = 0.
+            new_p.append(p[best_match[0], :21])
+            new_rects_p.append(p[best_match[0], 21:])
+            new_gt.append(gt[best_match[1], :21])
+            new_rects_gt.append(gt[best_match[1], 21:])
+            elements_in_p.remove(best_match[0])
+            elements_in_gt.remove(best_match[1])
+
+    # here we add the matches of false positives by inserting background class on the given rectangles on the ground
+    # truth
+    for element in elements_in_p:
+        new_p.append(p[element, :21])
+        new_rects_p.append(p[element, 21:])
+        new_gt.append(create_peak_array())
+        new_rects_gt.append(p[element, 21:])
+        # elements_in_p.remove(element)
+
+    # here we deal with false negatives, by adding them as r-cnn outputs equal to the background
+    for element in elements_in_gt:
+        new_p.append(gt[element, :21])
+        new_rects_p.append(gt[element, 21:])
+        new_gt.append(gt[element, :21])
+        new_gt.append(gt[element, 21:])
+        # elements_in_gt.remove(element)
+
+    # convert all the lists to numpy arrays
+    new_p = np.asarray(new_p)
+    new_rects_p = np.asarray(new_rects_p)
+    new_gt = np.asarray(new_gt)
+    new_rects_gt = np.asarray(new_rects_gt)
+
+    print(new_p.shape, new_rects_p.shape, new_rects_gt.shape, new_rects_gt.shape)
+
+    # add all the postprocessed information to a list
+    info_image = []
+    info_image.append(new_p)
+    info_image.append(new_rects_p)
+    info_image.append(new_gt)
+    info_image.append(new_rects_gt)
+    info_image.append(width_and_height)
+
+    return info_image
+
+
+def create_peak_array():
+    """
+    This function simply returns an array with 1 in the background class and zeros in all the other positions
+    :return: the above mentioned array
+    """
+    return np.array([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+
+
+def create_matching_table(p, gt):
+    """
+    This function creates a table of size n by m (n number of objects in p_rect, m number of objects in gt_rect),
+    where the entries on the table are the values of intersection over union of those objects
+    :param p: a numpy array of size n by 25 (21 first elements are the prob. distribution, last 4 elements are sptatial
+              dimensions
+    :param gt_rect: same as p, but the probability distribution is taken from the ground truth
+    :return: matching table: the table containing all i_over_u for each cartesian product between p and gt
+    """
+    len_p = len(p)
+    len_gt = len(gt)
+    matching_table = np.zeros((len_p, len_gt))
+    for i in xrange(len_p):
+        for j in xrange(len_gt):
+            matching_table[i, j] = bb_intersection_over_union(p[i, -4:], gt[j, -4:])
+    return matching_table
+
+
+def postprocess_all_images(p, gt, width_and_height):
     number_of_images = len(p)
-
-    all_i_over_u = []
-
+    info_all_images = []
     for i in xrange(number_of_images):
-        image_p = p[i]
-        image_gt = gt[i]
-        gt_len = len(image_gt)
-        p_len = len(image_p)
-        i_over_u = np.zeros((gt_len, p_len))
-        for j in xrange(gt_len):
-            for k in xrange(p_len):
-                _intersection_over_union = bb_intersection_over_union(image_p[k, -4:], image_gt[j, -4:])
-                i_over_u[j, k] = _intersection_over_union
-        all_i_over_u.append(i_over_u)
-
-
-    all_p_and_gt_postprocessed = []
-    for i in xrange(number_of_images):
-        p_and_gt_postprocessed = find_best_matches(all_i_over_u[i], p[i], gt[i])
-        p_and_gt_postprocessed.append(all_width_and_height[i])
-        all_p_and_gt_postprocessed.append(p_and_gt_postprocessed)
-    with open('p_and_gt_test.pickle', 'wb') as f:
-        # Pickle p data structure using the highest protocol available.
-        pickle.dump(all_p_and_gt_postprocessed, f, pickle.HIGHEST_PROTOCOL)
-    return all_p_and_gt_postprocessed
-
-
-def find_best_matches(numpy_array, p_object, gt_object):
-    rows = numpy_array.shape[0]
-    columns = numpy_array.shape[1]
-    max_number_matches = min(rows, columns)
-    p_object_postprocessed = []
-    gt_object_postprocessed = []
-    rectangles_p = []
-    rectangles_gt = []
-    p_and_gt_postprocessed = []
-    for i in xrange(max_number_matches):
-        best_match = unravel_index(numpy_array.argmax(), numpy_array.shape)
-        # consider only non-zero intersection over union
-        if numpy_array[best_match[0], best_match[1]]:
-            # make the entire row and column 0
-            numpy_array[best_match[0], :] = 0.
-            numpy_array[:, best_match[1]] = 0.
-            p_object_postprocessed.append(p_object[best_match[1], :21])
-            rectangles_p.append(p_object[best_match[1], 21:])
-            gt_object_postprocessed.append(gt_object[best_match[0], :21])
-            rectangles_gt.append(gt_object[best_match[0], 21:])
-
-    p_object_postprocessed = np.asarray(p_object_postprocessed)
-    gt_object_postprocessed = np.asarray(gt_object_postprocessed)
-    rectangles_p = np.asarray(rectangles_p)
-    rectangles_gt = np.asarray(rectangles_gt)
-    p_and_gt_postprocessed.append(p_object_postprocessed)
-    p_and_gt_postprocessed.append(gt_object_postprocessed)
-    p_and_gt_postprocessed.append(rectangles_p)
-    p_and_gt_postprocessed.append(rectangles_gt)
-    return p_and_gt_postprocessed
+        info_all_images.append(postprocess(p[i], gt[i], width_and_height[i]))
+    return info_all_images
 
 
 if __name__ == "__main__":
@@ -278,6 +363,8 @@ if __name__ == "__main__":
     net.cuda()
     net.eval()
     main()
+
+    R = np.load('R.npy')
     print("meh")
 
 
