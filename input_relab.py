@@ -250,10 +250,11 @@ def bb_intersection_over_union(boxA, boxB):
 def postprocess(p, gt, width_and_height):
     """
     This function does matching and then postprocessing of p's and gt's
-    :param p:
-    :param gt:
-    :param width_and_height:
-    :return:
+    :param p: the objects given from rcnn
+    :param gt: the objects we get from the ground truth
+    :param width_and_height: the width and height of the image
+    :return: info_image: a list which contains the postprocessed p, rectangels for p, postprocessed gt, rectangles
+             for gt, width and height
     """
     len_p = len(p)
     len_gt = len(gt)
@@ -343,6 +344,13 @@ def create_matching_table(p, gt):
 
 
 def postprocess_all_images(p, gt, width_and_height):
+    """
+    This function iterates over all images, calling postprocessed
+    :param p: data structure containing information given from rcnn
+    :param gt: data structure containing information given from the ground truth
+    :param width_and_height: width and height info for all images
+    :return: info_all_images: a list containing all information needed from relab
+    """
     number_of_images = len(p)
     info_all_images = []
     for i in xrange(number_of_images):
