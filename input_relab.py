@@ -371,9 +371,3 @@ if __name__ == "__main__":
     net.cuda()
     net.eval()
     main()
-
-    R = np.load('R.npy')
-    print("meh")
-
-
-
