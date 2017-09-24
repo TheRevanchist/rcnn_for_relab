@@ -31,31 +31,31 @@ vis = False
 
 
 def main():
-    # content = get_filenames_of_training_set(train_set)
-    # p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict)
-    #
-    # # dump data structures into pickle files
-    # with open('p_trainval.pickle', 'wb') as f:
-    #     pickle.dump(p, f, pickle.HIGHEST_PROTOCOL)
-    # with open('gt_trainval.pickle', 'wb') as f:
-    #     pickle.dump(gt, f, pickle.HIGHEST_PROTOCOL)
-    # with open('width_and_height_traival.pickle', 'wb') as f:
-    #     pickle.dump(width_and_height, f, pickle.HIGHEST_PROTOCOL)
+    content = get_filenames_of_training_set(train_set)
+    p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict)
+
+    # dump data structures into pickle files
+    with open('p_trainval.pickle', 'wb') as f:
+        pickle.dump(p, f, pickle.HIGHEST_PROTOCOL)
+    with open('gt_trainval.pickle', 'wb') as f:
+        pickle.dump(gt, f, pickle.HIGHEST_PROTOCOL)
+    with open('width_and_height_traival.pickle', 'wb') as f:
+        pickle.dump(width_and_height, f, pickle.HIGHEST_PROTOCOL)
 
     # load the pickle files
-    # with open('p_trainval.pickle', 'rb') as f:
-    #     p = pickle.load(f)
-    # with open('gt_trainval.pickle', 'rb') as f:
-    #     gt = pickle.load(f)
-    # with open('width_and_height_traival.pickle', 'rb') as f:
-    #     width_and_height = pickle.load(f)
-    #
-    # # do the matching between rcnn results and the ground truth
-    # info_all_images = postprocess_all_images(p, gt, width_and_height)
-    #
-    # # pickle the final data structure
-    # with open('info_all_images_trainval.pickle', 'wb') as f:
-    #     pickle.dump(info_all_images, f, pickle.HIGHEST_PROTOCOL)
+    with open('p_trainval.pickle', 'rb') as f:
+        p = pickle.load(f)
+    with open('gt_trainval.pickle', 'rb') as f:
+        gt = pickle.load(f)
+    with open('width_and_height_traival.pickle', 'rb') as f:
+        width_and_height = pickle.load(f)
+
+    # do the matching between rcnn results and the ground truth
+    info_all_images = postprocess_all_images(p, gt, width_and_height)
+
+    # pickle the final data structure
+    with open('info_all_images_trainval.pickle', 'wb') as f:
+        pickle.dump(info_all_images, f, pickle.HIGHEST_PROTOCOL)
 
     # load the final data structure
     with open('info_all_images_trainval.pickle', 'rb') as f:
@@ -295,7 +295,7 @@ def postprocess(p, gt, width_and_height):
         new_p.append(gt[element, :21])
         new_rects_p.append(gt[element, 21:])
         new_gt.append(gt[element, :21])
-        new_gt.append(gt[element, 21:])
+        new_rects_gt.append(gt[element, 21:])
         # elements_in_gt.remove(element)
 
     # convert all the lists to numpy arrays
@@ -309,8 +309,8 @@ def postprocess(p, gt, width_and_height):
     # add all the postprocessed information to a list
     info_image = []
     info_image.append(new_p)
-    info_image.append(new_rects_p)
     info_image.append(new_gt)
+    info_image.append(new_rects_p)
     info_image.append(new_rects_gt)
     info_image.append(width_and_height)
 
