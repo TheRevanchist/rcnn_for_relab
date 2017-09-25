@@ -15,6 +15,8 @@ from test2 import *
 repo_of_ground_truth = '/home/revan/VOCdevkit/VOC2007/Annotations'
 repo_of_images = '/home/revan/VOCdevkit/VOC2007/JPEGImages'
 train_set = '/home/revan/VOCdevkit/VOC2007/ImageSets/Main/trainval.txt'
+test_set = '/home/revan/VOCdevkit/VOC2007/ImageSets/Main/test.txt'
+
 
 classes_dict = {'__background__': 0, 'aeroplane': 1, 'bicycle': 2, 'bird': 3, 'boat': 4, 'bottle': 5, 'bus': 6, 'car': 7,
            'cat': 8, 'chair': 9, 'cow': 10, 'diningtable': 11, 'dog': 12, 'horse': 13, 'motorbike': 14,
@@ -30,36 +32,90 @@ thresh = 0.05
 vis = False
 
 
-def main():
-    content = get_filenames_of_training_set(train_set)
-    p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict)
+def main(train=1, serialized=1):
+    if train:
+        if serialized:
+            content = get_filenames_of_training_set(train_set)
+            p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict)
 
-    # dump data structures into pickle files
-    with open('p_trainval.pickle', 'wb') as f:
-        pickle.dump(p, f, pickle.HIGHEST_PROTOCOL)
-    with open('gt_trainval.pickle', 'wb') as f:
-        pickle.dump(gt, f, pickle.HIGHEST_PROTOCOL)
-    with open('width_and_height_traival.pickle', 'wb') as f:
-        pickle.dump(width_and_height, f, pickle.HIGHEST_PROTOCOL)
+            # dump data structures into pickle files
+            with open('p_trainval.pickle', 'wb') as f:
+                pickle.dump(p, f, pickle.HIGHEST_PROTOCOL)
+            with open('gt_trainval.pickle', 'wb') as f:
+                pickle.dump(gt, f, pickle.HIGHEST_PROTOCOL)
+            with open('width_and_height_traival.pickle', 'wb') as f:
+                pickle.dump(width_and_height, f, pickle.HIGHEST_PROTOCOL)
 
-    # load the pickle files
-    with open('p_trainval.pickle', 'rb') as f:
-        p = pickle.load(f)
-    with open('gt_trainval.pickle', 'rb') as f:
-        gt = pickle.load(f)
-    with open('width_and_height_traival.pickle', 'rb') as f:
-        width_and_height = pickle.load(f)
+        # load the pickle files
+        with open('p_trainval.pickle', 'rb') as f:
+            p = pickle.load(f)
+        with open('gt_trainval.pickle', 'rb') as f:
+            gt = pickle.load(f)
+        with open('width_and_height_traival.pickle', 'rb') as f:
+            width_and_height = pickle.load(f)
 
-    # do the matching between rcnn results and the ground truth
-    info_all_images = postprocess_all_images(p, gt, width_and_height)
+        if serialized:
+            # do the matching between rcnn results and the ground truth
+            info_all_images = postprocess_all_images(p, gt, width_and_height)
 
-    # pickle the final data structure
-    with open('info_all_images_trainval.pickle', 'wb') as f:
-        pickle.dump(info_all_images, f, pickle.HIGHEST_PROTOCOL)
+            # pickle the final data structure
+            with open('info_all_images_trainval.pickle', 'wb') as f:
+                pickle.dump(info_all_images, f, pickle.HIGHEST_PROTOCOL)
 
-    # load the final data structure
-    with open('info_all_images_trainval.pickle', 'rb') as f:
-        info_all_images = pickle.load(f)
+        # load the final data structure
+        with open('info_all_images_trainval.pickle', 'rb') as f:
+            info_all_images = pickle.load(f)
+
+    else:
+        if serialized:
+            content = get_filenames_of_training_set(test_set)
+            p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict)
+
+            # dump data structures into pickle files
+            with open('p_test.pickle', 'wb') as f:
+                pickle.dump(p, f, pickle.HIGHEST_PROTOCOL)
+            with open('gt_test.pickle', 'wb') as f:
+                pickle.dump(gt, f, pickle.HIGHEST_PROTOCOL)
+            with open('width_and_height_test.pickle', 'wb') as f:
+                pickle.dump(width_and_height, f, pickle.HIGHEST_PROTOCOL)
+
+        # load the pickle files
+        with open('p_trainval.pickle', 'rb') as f:
+            p = pickle.load(f)
+        with open('gt_trainval.pickle', 'rb') as f:
+            gt = pickle.load(f)
+        with open('width_and_height_traival.pickle', 'rb') as f:
+            width_and_height = pickle.load(f)
+
+        if serialized:
+            info_all_images = []
+            len_p = len(p)
+            for i in xrange(len_p):
+                new_data = []
+                if len(p[i] > 0):
+                    new_p = p[i][:, :21]
+                    new_rect_p = p[i][:, 21:]
+
+                else:
+                    new_p = []
+                    new_rect_p = []
+
+                new_gt = gt[i][:, :21]
+                new_rect_gt = gt[i][:, 21:]
+                new_width_and_height = width_and_height[i]
+                new_data.append(new_p)
+                new_data.append(new_gt)
+                new_data.append(new_rect_p)
+                new_data.append(new_rect_gt)
+                new_data.append(new_width_and_height)
+                info_all_images.append(new_data)
+
+            with open('info_all_images_test.pickle', 'wb') as f:
+                pickle.dump(info_all_images, f, pickle.HIGHEST_PROTOCOL)
+
+        # load the final data structure
+        with open('info_all_images_test.pickle', 'rb') as f:
+            info_all_images = pickle.load(f)
 
     print("Done")
 
