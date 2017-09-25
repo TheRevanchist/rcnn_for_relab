@@ -11,7 +11,6 @@ import pickle
 from numpy import unravel_index
 from test2 import *
 
-
 repo_of_ground_truth = '/home/revan/VOCdevkit/VOC2007/Annotations'
 repo_of_images = '/home/revan/VOCdevkit/VOC2007/JPEGImages'
 train_set = '/home/revan/VOCdevkit/VOC2007/ImageSets/Main/trainval.txt'
@@ -286,21 +285,25 @@ def bb_intersection_over_union(boxA, boxB):
     xB = min(boxA[2], boxB[2])
     yB = min(boxA[3], boxB[3])
 
-    # compute the area of intersection rectangle
-    interArea = (xB - xA + 1) * (yB - yA + 1)
+    if xA > xB or yA > yB:
+        return 0
 
-    # compute the area of both the prediction and ground-truth
-    # rectangles
-    boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
-    boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
+    else:
+        # compute the area of intersection rectangle
+        interArea = (xB - xA + 1) * (yB - yA + 1)
 
-    # compute the intersection over union by taking the intersection
-    # area and dividing it by the sum of prediction + ground-truth
-    # areas - the interesection area
-    iou = interArea / float(boxAArea + boxBArea - interArea)
+        # compute the area of both the prediction and ground-truth
+        # rectangles
+        boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
+        boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
 
-    # return the intersection over union value
-    return iou
+        # compute the intersection over union by taking the intersection
+        # area and dividing it by the sum of prediction + ground-truth
+        # areas - the interesection area
+        iou = interArea / float(boxAArea + boxBArea - interArea)
+
+        # return the intersection over union value
+        return iou
 
 
 def postprocess(p, gt, width_and_height):
@@ -424,6 +427,6 @@ if __name__ == "__main__":
 
     net.cuda()
     net.eval()
-    train_mode = 0  # 1 if on train mode, 0 on test mode
+    train_mode = 1  # 1 if on train mode, 0 on test mode
     serialize = 1  # 0 if you just want to load the data, 1 if you want to process it
     main(train=train_mode, serialize=serialize)
