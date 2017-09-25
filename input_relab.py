@@ -32,10 +32,10 @@ thresh = 0.05
 vis = False
 
 
-def main(train=1, serialized=1):
+def main(train=1, serialize=1):
     if train:
-        if serialized:
-            content = get_filenames_of_training_set(train_set)
+        if serialize:
+            content = get_filenames_of_set(train_set)
             p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict)
 
             # dump data structures into pickle files
@@ -54,7 +54,7 @@ def main(train=1, serialized=1):
         with open('width_and_height_traival.pickle', 'rb') as f:
             width_and_height = pickle.load(f)
 
-        if serialized:
+        if serialize:
             # do the matching between rcnn results and the ground truth
             info_all_images = postprocess_all_images(p, gt, width_and_height)
 
@@ -67,8 +67,8 @@ def main(train=1, serialized=1):
             info_all_images = pickle.load(f)
 
     else:
-        if serialized:
-            content = get_filenames_of_training_set(test_set)
+        if serialize:
+            content = get_filenames_of_set(test_set)
             p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict)
 
             # dump data structures into pickle files
@@ -80,14 +80,14 @@ def main(train=1, serialized=1):
                 pickle.dump(width_and_height, f, pickle.HIGHEST_PROTOCOL)
 
         # load the pickle files
-        with open('p_trainval.pickle', 'rb') as f:
+        with open('p_test.pickle', 'rb') as f:
             p = pickle.load(f)
-        with open('gt_trainval.pickle', 'rb') as f:
+        with open('gt_test.pickle', 'rb') as f:
             gt = pickle.load(f)
-        with open('width_and_height_traival.pickle', 'rb') as f:
+        with open('width_and_height_test.pickle', 'rb') as f:
             width_and_height = pickle.load(f)
 
-        if serialized:
+        if serialize:
             info_all_images = []
             len_p = len(p)
             for i in xrange(len_p):
@@ -144,7 +144,7 @@ def remove_background(p):
 
 
 
-def get_filenames_of_training_set(train_set):
+def get_filenames_of_set(train_set):
     """
     This function reads the names of the files that we are going to use as our training test
     :param train_set - the file which contains the names of the training set
@@ -360,8 +360,6 @@ def postprocess(p, gt, width_and_height):
     new_gt = np.asarray(new_gt)
     new_rects_gt = np.asarray(new_rects_gt)
 
-    print(new_p.shape, new_rects_p.shape, new_rects_gt.shape, new_rects_gt.shape)
-
     # add all the postprocessed information to a list
     info_image = []
     info_image.append(new_p)
@@ -426,4 +424,6 @@ if __name__ == "__main__":
 
     net.cuda()
     net.eval()
-    main()
+    train_mode = 0  # 1 if on train mode, 0 on test mode
+    serialize = 1  # 0 if you just want to load the data, 1 if you want to process it
+    main(train=train_mode, serialize=serialize)
