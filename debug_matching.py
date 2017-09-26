@@ -24,12 +24,14 @@ def main():
 
 
 def debug_bounding_boxes(repo_of_images):
+    """
+    This function visualizes the images, by putting bounding boxes with the same color on rcnn boxes and ground truth
+    boxes, in addition to printing the results (iou) in the console
+    :param repo_of_images: the repository of the images
+    """
     content = files(train_set)
     with open('info_all_images_trainval.pickle', 'rb') as f:
         info_all_images = pickle.load(f)
-
-    im = info_all_images[8]
-
 
     font = cv2.FONT_HERSHEY_SIMPLEX
     for i, im in enumerate(content):
@@ -38,11 +40,8 @@ def debug_bounding_boxes(repo_of_images):
 
         # get all the information about the image
         current_image = info_all_images[i]
-        p_image = current_image[0]
-        gt_image = current_image[1]
         p_rect_image = current_image[2]
         gt_rect_image = current_image[3]
-        width_and_height_image = current_image[4]
 
         # get number of objects in the image
         number_of_objects = p_rect_image.shape[0]
@@ -65,6 +64,11 @@ def debug_bounding_boxes(repo_of_images):
 
 
 def get_spaced_colors(n):
+    """
+    This function creates a list of n distinct colors
+    :param n: the number of colors
+    :return: a list of distinct colors
+    """
     max_value = 16581375  # 255**3
     interval = int(max_value / n)
     colors = [hex(I)[2:].zfill(6) for I in range(0, max_value, interval)]

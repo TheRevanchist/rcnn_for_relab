@@ -427,6 +427,6 @@ if __name__ == "__main__":
 
     net.cuda()
     net.eval()
-    train_mode = 1  # 1 if on train mode, 0 on test mode
+    train_mode = 0  # 1 if on train mode, 0 on test mode
     serialize = 1  # 0 if you just want to load the data, 1 if you want to process it
     main(train=train_mode, serialize=serialize)
