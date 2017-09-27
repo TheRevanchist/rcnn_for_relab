@@ -10,6 +10,7 @@ from faster_rcnn.utils.timer import Timer
 import pickle
 from numpy import unravel_index
 from test2 import *
+from faster_rcnn.nms.py_cpu_nms import py_cpu_nms
 
 repo_of_ground_truth = '/home/revan/VOCdevkit/VOC2007/Annotations'
 repo_of_images = '/home/revan/VOCdevkit/VOC2007/JPEGImages'
@@ -32,10 +33,11 @@ vis = False
 
 
 def main(train=1, serialize=1):
+    distribution_mode = 'peak'  # the mode can be 'peak' or 'softmax'
     if train:
         if serialize:
             content = get_filenames_of_set(train_set)
-            p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict)
+            p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict, distribution_mode)
 
             # dump data structures into pickle files
             with open('p_trainval.pickle', 'wb') as f:
@@ -68,7 +70,7 @@ def main(train=1, serialize=1):
     else:
         if serialize:
             content = get_filenames_of_set(test_set)
-            p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict)
+            p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict, distribution_mode)
 
             # dump data structures into pickle files
             with open('p_test.pickle', 'wb') as f:
@@ -218,6 +220,8 @@ def test_net(name, net, imdb, im, max_per_image=300, thresh=0.3, vis=False):
         cls_dets = np.hstack((cls_boxes, cls_scores[:, np.newaxis])) \
                 .astype(np.float32, copy=False)
         keep = nms(cls_dets, cfg.TEST.NMS)
+        object_class = np.full((cls_dets.shape[0], 1), j, dtype=np.float32)
+        cls_dets = np.hstack((cls_dets, object_class))#.astype(np.float32, copy=False)
         cls_dets = cls_dets[keep, :]
         if cls_dets.shape[0] != 0:
             for k in xrange(len(cls_dets)):
@@ -226,13 +230,13 @@ def test_net(name, net, imdb, im, max_per_image=300, thresh=0.3, vis=False):
         to_keep.extend(inds[keep])
 
     all_scores = scores[to_keep]
-    class_boxes = np.zeros((len(all_class_boxes), 5))
+    class_boxes = np.zeros((len(all_class_boxes), 6))
     for whatever in range(len(all_class_boxes)):
         class_boxes[whatever] = all_class_boxes[whatever]
     return all_scores, class_boxes
 
 
-def create_p_and_gt(content, repo_of_images, dict):
+def create_p_and_gt(content, repo_of_images, dict, mode='peak'):
     """
     This function creates initial p and gt based on the output of the r-cnn and the ground truth
     :param content: a list containing the names of the images
@@ -256,13 +260,17 @@ def create_p_and_gt(content, repo_of_images, dict):
 
         all_scores, all_class_boxes = test_net(save_name, net, imdb, im, max_per_image, thresh=thresh, vis=0)
 
+        if mode == 'peak':
+            for i in xrange(len(all_scores)):
+                all_scores[i, :] = create_peak_array(all_class_boxes[i, 4], all_class_boxes[i, 5])
+
         gt_info, width, height = find_objects_in_files(xml_file, dict)
         ground_truth.append(gt_info)
 
         if len(all_scores) != 0:
             rcnn_output_individual = np.zeros((len(all_scores), 25))
             rcnn_output_individual[:, :21] = all_scores
-            rcnn_output_individual[:, 21:] = all_class_boxes[:, :-1]
+            rcnn_output_individual[:, 21:] = all_class_boxes[:, :-2]
             rcnn_output.append(rcnn_output_individual)
             all_width_and_height.append(np.asarray([width, height]))
         else:
@@ -374,12 +382,18 @@ def postprocess(p, gt, width_and_height):
     return info_image
 
 
-def create_peak_array():
+def create_peak_array(peak, peak_index):
     """
-    This function simply returns an array with 1 in the background class and zeros in all the other positions
-    :return: the above mentioned array
+    This function creates an array which represents a probability distribution, with value peak in the peak_index'th
+    entry, and value (1 - peak)/20. in all the other positions
+    :param peak: the peak value
+    :param peak_index: the index where we have to put the peak value
+    :return:
     """
-    return np.array([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+    not_peak = (1. - peak) / 20.
+    peak_distribution = np.full((1, 21), not_peak, dtype=np.float32)
+    peak_distribution[0, int(peak_index)] = peak
+    return peak_distribution
 
 
 def create_matching_table(p, gt):
