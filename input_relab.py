@@ -1,3 +1,6 @@
+# This files creates all the needed data structures that relab needs
+# User gives the option for training and testing mode
+
 import numpy as np
 import os
 import xml.etree.ElementTree as ET
@@ -33,7 +36,7 @@ vis = False
 
 
 def main(train=1, serialize=1):
-    distribution_mode = 'peak'  # the mode can be 'peak' or 'softmax'
+    distribution_mode = 'k-peak'  # the mode can be 'peak', k_peak or 'softmax'
     if train:
         if serialize:
             content = get_filenames_of_set(train_set)
@@ -57,14 +60,14 @@ def main(train=1, serialize=1):
 
         if serialize:
             # do the matching between rcnn results and the ground truth
-            info_all_images = postprocess_all_images(p, gt, width_and_height)
+            info_all_images = postprocess_all_images(p, gt, width_and_height, false_positives=False, false_negatives=False)
 
             # pickle the final data structure
-            with open('info_all_images_trainval.pickle', 'wb') as f:
+            with open('train_k_peak_nofp_nofn.pickle', 'wb') as f:
                 pickle.dump(info_all_images, f, pickle.HIGHEST_PROTOCOL)
 
         # load the final data structure
-        with open('info_all_images_trainval.pickle', 'rb') as f:
+        with open('train_k_peak_nofp_nofn.pickle', 'rb') as f:
             info_all_images = pickle.load(f)
 
     else:
@@ -187,13 +190,13 @@ def find_objects_in_files(filename, dict):
             for xmin in bounding_box.iter('xmin'):
                 # we convert first to float and then to int because for some reasons the bounding boxes can have float
                 # coordinates like 273.3863
-                xmin = int(float(xmin.text)) # / width
+                xmin = int(float(xmin.text))  # / width
             for ymin in bounding_box.iter('ymin'):
-                ymin = int(float(ymin.text)) # / height
+                ymin = int(float(ymin.text))  # / height
             for xmax in bounding_box.iter('xmax'):
-                xmax = int(float(xmax.text)) # / width
+                xmax = int(float(xmax.text))  # / width
             for ymax in bounding_box.iter('ymax'):
-                ymax = int(float(ymax.text)) # / height
+                ymax = int(float(ymax.text))  # / height
             # fill the spatial positions for each object
             gt_info_object[21] = xmin
             gt_info_object[22] = ymin
@@ -247,12 +250,9 @@ def create_p_and_gt(content, repo_of_images, dict, mode='peak'):
             ground_truth: the representation gotten from the ground truth
             all_width_and_height: width and the height of the image (read from xml files)
     """
-
-
     rcnn_output = []
     ground_truth = []
     all_width_and_height = []
-
 
     for image_name in content:
         im = cv2.imread(os.path.join(repo_of_images, image_name + ".jpg"))
@@ -260,9 +260,15 @@ def create_p_and_gt(content, repo_of_images, dict, mode='peak'):
 
         all_scores, all_class_boxes = test_net(save_name, net, imdb, im, max_per_image, thresh=thresh, vis=0)
 
+        all_scores_length = len(all_scores)
         if mode == 'peak':
-            for i in xrange(len(all_scores)):
+            for i in xrange(all_scores_length):
                 all_scores[i, :] = create_peak_array(all_class_boxes[i, 4], all_class_boxes[i, 5])
+
+        elif mode == 'k-peak':
+            k = 5
+            for i in xrange(all_scores_length):
+                all_scores[i, :] = create_peak_k_array(all_scores[i, :], k)
 
         gt_info, width, height = find_objects_in_files(xml_file, dict)
         ground_truth.append(gt_info)
@@ -314,7 +320,7 @@ def bb_intersection_over_union(boxA, boxB):
         return iou
 
 
-def postprocess(p, gt, width_and_height):
+def postprocess(p, gt, width_and_height, false_positives=False, false_negatives=False):
     """
     This function does matching and then postprocessing of p's and gt's
     :param p: the objects given from rcnn
@@ -350,20 +356,20 @@ def postprocess(p, gt, width_and_height):
 
     # here we add the matches of false positives by inserting background class on the given rectangles on the ground
     # truth
-    for element in elements_in_p:
-        new_p.append(p[element, :21])
-        new_rects_p.append(p[element, 21:])
-        new_gt.append(create_peak_array())
-        new_rects_gt.append(p[element, 21:])
-        # elements_in_p.remove(element)
+    if false_positives:
+        for element in elements_in_p:
+            new_p.append(p[element, :21])
+            new_rects_p.append(p[element, 21:])
+            new_gt.append(create_background_peak_array())
+            new_rects_gt.append(p[element, 21:])
 
-    # here we deal with false negatives, by adding them as r-cnn outputs equal to the background
-    for element in elements_in_gt:
-        new_p.append(gt[element, :21])
-        new_rects_p.append(gt[element, 21:])
-        new_gt.append(gt[element, :21])
-        new_rects_gt.append(gt[element, 21:])
-        # elements_in_gt.remove(element)
+    # here we deal with false negatives, by adding them as r-cnn outputs equal to the ground truth
+    if false_negatives:
+        for element in elements_in_gt:
+            new_p.append(gt[element, :21])
+            new_rects_p.append(gt[element, 21:])
+            new_gt.append(gt[element, :21])
+            new_rects_gt.append(gt[element, 21:])
 
     # convert all the lists to numpy arrays
     new_p = np.asarray(new_p)
@@ -372,12 +378,7 @@ def postprocess(p, gt, width_and_height):
     new_rects_gt = np.asarray(new_rects_gt)
 
     # add all the postprocessed information to a list
-    info_image = []
-    info_image.append(new_p)
-    info_image.append(new_gt)
-    info_image.append(new_rects_p)
-    info_image.append(new_rects_gt)
-    info_image.append(width_and_height)
+    info_image = [new_p, new_gt, new_rects_p, new_rects_gt, width_and_height]
 
     return info_image
 
@@ -394,6 +395,22 @@ def create_peak_array(peak, peak_index):
     peak_distribution = np.full((1, 21), not_peak, dtype=np.float32)
     peak_distribution[0, int(peak_index)] = peak
     return peak_distribution
+
+
+def create_peak_k_array(softmax_array, k):
+    """
+    This function thresholds to 0 all entries which are not in the top k values
+    :param softmax_array: an array which represents a probability distribution over classes
+           k: k peak elements
+    :return: k_peak_array - the postprocessed softmax array
+    """
+    argsort_array = np.argsort(softmax_array)[::-1] # argsort in reverse order
+    k_peak_array = np.zeros(21)
+    for i in xrange(k):
+        k_peak_array[argsort_array[i]] = softmax_array[argsort_array[i]]
+    k_peak_array /= np.sum(k_peak_array)
+    return k_peak_array
+
 
 
 def create_matching_table(p, gt):
@@ -414,9 +431,17 @@ def create_matching_table(p, gt):
     return matching_table
 
 
+def create_background_peak_array():
+    """
+    This function simply returns an array with 1 in the background class and 0 in all other classes
+    :return: the above mentioned array
+    """
+    return np.array([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+
+
 def postprocess_all_images(p, gt, width_and_height):
     """
-    This function iterates over all images, calling postprocessed
+    This function iterates over all images, calling postprocess
     :param p: data structure containing information given from rcnn
     :param gt: data structure containing information given from the ground truth
     :param width_and_height: width and height info for all images
@@ -425,7 +450,7 @@ def postprocess_all_images(p, gt, width_and_height):
     number_of_images = len(p)
     info_all_images = []
     for i in xrange(number_of_images):
-        info_all_images.append(postprocess(p[i], gt[i], width_and_height[i]))
+        info_all_images.append(postprocess(p[i], gt[i], width_and_height[i], false_positives=False, false_negatives=False))
     return info_all_images
 
 
@@ -441,6 +466,6 @@ if __name__ == "__main__":
 
     net.cuda()
     net.eval()
-    train_mode = 0  # 1 if on train mode, 0 on test mode
+    train_mode = 1  # 1 if on train mode, 0 on test mode
     serialize = 1  # 0 if you just want to load the data, 1 if you want to process it
     main(train=train_mode, serialize=serialize)
