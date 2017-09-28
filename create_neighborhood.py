@@ -1,12 +1,5 @@
 import numpy as np
-# from input_relab import get_filenames_of_set as files
 import pickle
-from scipy import spatial
-from math import floor
-
-
-data_structure_train = 'info_all_images_trainval.pickle'
-data_structure_test = 'info_all_images_test.pickle'
 
 # info all images trainval: list l of lists l_x of ndarrays ar_x
 # each element in l represents data related to an image
@@ -18,7 +11,12 @@ data_structure_test = 'info_all_images_test.pickle'
 # ar_4: width and height of image (1 x 2)
 
 
-def create_Ns(fname='info_all_images_trainval.pickle'):
+def create_Ns(fname='info_all_images_trainval.pickle', d_bins=None, alpha_bins=None):
+    if d_bins is None:
+        d_bins = np.linspace(0.0, 1.0, 5)
+    if alpha_bins is None:
+        alpha_bins = np.linspace(0.0, 2.0 * np.pi, 5)
+
     with open(fname, 'rb') as f:
         images_data = pickle.load(f)
 
@@ -44,18 +42,18 @@ def create_Ns(fname='info_all_images_trainval.pickle'):
 
         dists, angles = find_dists_and_angles(centres)
 
-        d_bins, alpha_bins = (4, 4)
-        d_bin_sz = 1.0 / d_bins
-        alpha_bin_sz = 2.0 * np.pi / alpha_bins
-
-        D = d_bins * alpha_bins
+        D = (len(d_bins) - 1) * (len(alpha_bins) - 1)
 
         N = np.zeros((D, num_bboxes, num_bboxes))
-        dists = np.clip(np.floor(dists / d_bin_sz).astype(int), 0, d_bins - 1)
-        angles = np.clip(np.floor((angles + np.pi) / alpha_bin_sz).astype(int), 0, alpha_bins - 1)
+        for i, (x_0, x_1) in enumerate(zip(d_bins[:-1], d_bins[1:])):
+            dists[np.logical_and(x_0 <= dists, dists <= x_1)] = i
 
-        for ((i, j), d), alpha in zip(np.ndenumerate(dists), np.nditer(angles)):
-            N[d * d_bins + alpha, i, j] += 1
+        angles += np.pi
+        for i, (x_0, x_1) in enumerate(zip(alpha_bins[:-1], alpha_bins[1:])):
+            angles[np.logical_and(x_0 <= angles, angles <= x_1)] = i
+
+        for ((i, j), d), alpha in zip(np.ndenumerate(dists.astype(int)), np.nditer(angles.astype(int))):
+            N[d * (len(d_bins) - 1) + alpha, i, j] += 1
 
         for i in xrange(N.shape[0]):
             np.fill_diagonal(N[i], 0.0)
@@ -116,7 +114,3 @@ def find_distances_and_angles(points):
                 y = points[j, 1] - points[i, 1]
                 angles.append(np.arctan2(y, x))
     return distances, angles
-
-
-if __name__ == "__main__":
-    main()
