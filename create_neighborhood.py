@@ -1,5 +1,4 @@
 import numpy as np
-import pickle
 
 # info all images trainval: list l of lists l_x of ndarrays ar_x
 # each element in l represents data related to an image
@@ -11,37 +10,16 @@ import pickle
 # ar_4: width and height of image (1 x 2)
 
 
-def create_Ns(fname='info_all_images_trainval.pickle', d_bins=None, alpha_bins=None):
+def create_N(bboxes, d_bins=None, alpha_bins=None):
     if d_bins is None:
         d_bins = np.linspace(0.0, 1.0, 5)
     if alpha_bins is None:
         alpha_bins = np.linspace(0.0, 2.0 * np.pi, 5)
 
-    with open(fname, 'rb') as f:
-        images_data = pickle.load(f)
-
-    Ns = []
-    for image_data in images_data:
-        bboxes = image_data[2]
-        img_sz = image_data[4]
-        num_bboxes = len(bboxes)
-
-        # centres = np.zeros((bboxes.shape[0], 2))
-        # for i, bbox in enumerate(bboxes):
-        #     centres[i] = normalize_and_centralize_bbox(bbox, img_sz)
-
-        centres = normalize_and_centralize_bboxes(bboxes, img_sz)
-
-        dists = np.zeros((num_bboxes, num_bboxes))
-        angles = np.zeros((num_bboxes, num_bboxes))
-
-        # for i in xrange(num_bboxes):
-        #     for j in xrange(num_bboxes):
-        #         dists[i, j], angles[i, j] = find_distance_and_angle(centres)
-        # np.fill_diagonal(dists, 0.0)
-
+    num_bboxes = len(bboxes)
+    if num_bboxes >= 2:
+        centres = normalize_and_centralize_bboxes(bboxes)
         dists, angles = find_dists_and_angles(centres)
-
         D = (len(d_bins) - 1) * (len(alpha_bins) - 1)
 
         N = np.zeros((D, num_bboxes, num_bboxes))
@@ -55,34 +33,48 @@ def create_Ns(fname='info_all_images_trainval.pickle', d_bins=None, alpha_bins=N
         for ((i, j), d), alpha in zip(np.ndenumerate(dists.astype(int)), np.nditer(angles.astype(int))):
             N[d * (len(d_bins) - 1) + alpha, i, j] += 1
 
-        for i in xrange(N.shape[0]):
+        for i in range(N.shape[0]):
             np.fill_diagonal(N[i], 0.0)
+    else:
+        raise ValueError("Not enough bounding boxes to create a neighborhood")
 
-        Ns.append(N)
-    return Ns
+    return N
 
 
-def normalize_and_centralize_bboxes(bboxes, img_sz):
-    img_sz = img_sz.astype(float)
+def merge_angle_neighbourhood(N, d_bins):
+    # NB: for now it works only with no distance bins
+    new_N = np.zeros((3 * len(d_bins) - 1, N.shape[1], N.shape[1]))
 
+    for i in xrange(len(d_bins) - 1):
+        new_N[0 + (i * 3)] = N[0 + (i * 5)] + N[2 + (i * 5)] + N[4 + (i * 5)]
+        new_N[1 + (i * 3)] = N[1 + (i * 5)]
+        new_N[2 + (i * 3)] = N[3 + (i * 5)]
+    return new_N
+
+def normalize_and_centralize_bboxes(bboxes):
     # normalize the rectangles by dividing with the width and height of the image
-    bboxes[:, [0, 2]] /= img_sz[0]
-    bboxes[:, [1, 3]] /= img_sz[1]
+    bboxes_transformed = np.zeros((bboxes.shape[0], 4))
+    bboxes_transformed[:, [0, 2]] = bboxes[:, [0, 2]]
+    bboxes_transformed[:, [1, 3]] = bboxes[:, [1, 3]]
 
     # find the centers of the rectangles
-    centres = np.zeros((bboxes.shape[0], 2))  # centres not centers, God save her highness the Queen
-    centres[:, 0] = (bboxes[:, 0] + bboxes[:, 2]) / 2.0
-    centres[:, 1] = (bboxes[:, 1] + bboxes[:, 3]) / 2.0
+    centres = np.zeros((bboxes_transformed.shape[0], 2))  # centres not centers, God save her highness the Queen
+    centres[:, 0] = (bboxes_transformed[:, 0] + bboxes_transformed[:, 2]) / 2.0
+    centres[:, 1] = (bboxes_transformed[:, 1] + bboxes_transformed[:, 3]) / 2.0
 
     return centres
 
 
-def find_dists_and_angles(points):
-    # distance = np.linalg.norm(points1 - point2)
-    # x = point2[0] - point1[0]
-    # y = point2[1] - point1[1]
-    # angle = np.arctan2(y, x)
+def find_centre(bbox):
+    # find the centers of the rectangles
+    centre = np.zeros(2)  # centres not centers, God save her highness the Queen
+    centre[0] = (bbox[0] + bbox[2]) / 2.0
+    centre[1] = (bbox[1] + bbox[3]) / 2.0
 
+    return centre
+
+
+def find_dists_and_angles(points):
     dists = np.zeros((points.shape[0], points.shape[0]))
     angles = np.zeros((points.shape[0], points.shape[0]))
     for i, p1 in enumerate(points):
@@ -114,3 +106,4 @@ def find_distances_and_angles(points):
                 y = points[j, 1] - points[i, 1]
                 angles.append(np.arctan2(y, x))
     return distances, angles
+
