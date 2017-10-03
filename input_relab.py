@@ -36,11 +36,11 @@ vis = False
 
 
 def main(train=1, serialize=1):
-    distribution_mode = 'k-peak'  # the mode can be 'peak', k_peak or 'softmax'
+    distribution_mode = 'softmax'  # the mode can be 'peak', k_peak or 'softmax'
     if train:
         if serialize:
             content = get_filenames_of_set(train_set)
-            p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict, distribution_mode)
+            p, gt, width_and_height, all_boxes_all_images = create_p_and_gt(content, repo_of_images, classes_dict, distribution_mode)
 
             # dump data structures into pickle files
             with open('p_trainval.pickle', 'wb') as f:
@@ -49,6 +49,8 @@ def main(train=1, serialize=1):
                 pickle.dump(gt, f, pickle.HIGHEST_PROTOCOL)
             with open('width_and_height_traival.pickle', 'wb') as f:
                 pickle.dump(width_and_height, f, pickle.HIGHEST_PROTOCOL)
+            with open('all_boxes_all_images_trainval.pickle', 'wb') as f:
+                pickle.dump(all_boxes_all_images, f, pickle.HIGHEST_PROTOCOL)
 
         # load the pickle files
         with open('p_trainval.pickle', 'rb') as f:
@@ -57,23 +59,26 @@ def main(train=1, serialize=1):
             gt = pickle.load(f)
         with open('width_and_height_traival.pickle', 'rb') as f:
             width_and_height = pickle.load(f)
+        with open('all_boxes_all_images_trainval.pickle', 'wb') as f:
+            pickle.dump(all_boxes_all_images, f, pickle.HIGHEST_PROTOCOL)
+
 
         if serialize:
             # do the matching between rcnn results and the ground truth
-            info_all_images = postprocess_all_images(p, gt, width_and_height, false_positives=False, false_negatives=False)
+            info_all_images = postprocess_all_images(p, gt, width_and_height, all_boxes_all_images, false_positives=False, false_negatives=False)
 
             # pickle the final data structure
             with open('train_k_peak_nofp_nofn.pickle', 'wb') as f:
                 pickle.dump(info_all_images, f, pickle.HIGHEST_PROTOCOL)
 
         # load the final data structure
-        with open('train_k_peak_nofp_nofn.pickle', 'rb') as f:
+        with open('train_k_peak_softmax_nofp_nofn.pickle', 'rb') as f:
             info_all_images = pickle.load(f)
 
     else:
         if serialize:
             content = get_filenames_of_set(test_set)
-            p, gt, width_and_height = create_p_and_gt(content, repo_of_images, classes_dict, distribution_mode)
+            p, gt, width_and_height, all_boxes_all_images = create_p_and_gt(content, repo_of_images, classes_dict, distribution_mode)
 
             # dump data structures into pickle files
             with open('p_test.pickle', 'wb') as f:
@@ -82,6 +87,8 @@ def main(train=1, serialize=1):
                 pickle.dump(gt, f, pickle.HIGHEST_PROTOCOL)
             with open('width_and_height_test.pickle', 'wb') as f:
                 pickle.dump(width_and_height, f, pickle.HIGHEST_PROTOCOL)
+            with open('all_boxes_all_images_test.pickle', 'wb') as f:
+                pickle.dump(all_boxes_all_images, f, pickle.HIGHEST_PROTOCOL)
 
         # load the pickle files
         with open('p_test.pickle', 'rb') as f:
@@ -90,6 +97,8 @@ def main(train=1, serialize=1):
             gt = pickle.load(f)
         with open('width_and_height_test.pickle', 'rb') as f:
             width_and_height = pickle.load(f)
+        with open('all_boxes_all_images_test.pickle', 'wb') as f:
+            pickle.dump(all_boxes_all_images, f, pickle.HIGHEST_PROTOCOL)
 
         if serialize:
             info_all_images = []
@@ -112,6 +121,7 @@ def main(train=1, serialize=1):
                 new_data.append(new_rect_p)
                 new_data.append(new_rect_gt)
                 new_data.append(new_width_and_height)
+                new_data.append(all_boxes_all_images[i])
                 info_all_images.append(new_data)
 
             with open('info_all_images_test.pickle', 'wb') as f:
@@ -224,7 +234,7 @@ def test_net(name, net, imdb, im, max_per_image=300, thresh=0.3, vis=False):
                 .astype(np.float32, copy=False)
         keep = nms(cls_dets, cfg.TEST.NMS)
         object_class = np.full((cls_dets.shape[0], 1), j, dtype=np.float32)
-        cls_dets = np.hstack((cls_dets, object_class))#.astype(np.float32, copy=False)
+        cls_dets = np.hstack((cls_dets, object_class))
         cls_dets = cls_dets[keep, :]
         if cls_dets.shape[0] != 0:
             for k in xrange(len(cls_dets)):
@@ -233,10 +243,11 @@ def test_net(name, net, imdb, im, max_per_image=300, thresh=0.3, vis=False):
         to_keep.extend(inds[keep])
 
     all_scores = scores[to_keep]
+    all_boxes = boxes[to_keep]
     class_boxes = np.zeros((len(all_class_boxes), 6))
     for whatever in range(len(all_class_boxes)):
         class_boxes[whatever] = all_class_boxes[whatever]
-    return all_scores, class_boxes
+    return all_scores, class_boxes, all_boxes
 
 
 def create_p_and_gt(content, repo_of_images, dict, mode='peak'):
@@ -249,16 +260,18 @@ def create_p_and_gt(content, repo_of_images, dict, mode='peak'):
             rcnn_output: the representation given by rcnn
             ground_truth: the representation gotten from the ground truth
             all_width_and_height: width and the height of the image (read from xml files)
+            all_boxes_all_images: boxes for each possible class, might be needed after relab
     """
     rcnn_output = []
     ground_truth = []
     all_width_and_height = []
+    all_boxes_all_images = []
 
     for image_name in content:
         im = cv2.imread(os.path.join(repo_of_images, image_name + ".jpg"))
         xml_file = os.path.join(repo_of_ground_truth, image_name + ".xml")
 
-        all_scores, all_class_boxes = test_net(save_name, net, imdb, im, max_per_image, thresh=thresh, vis=0)
+        all_scores, all_class_boxes, all_boxes = test_net(save_name, net, imdb, im, max_per_image, thresh=thresh, vis=0)
 
         all_scores_length = len(all_scores)
         if mode == 'peak':
@@ -279,11 +292,13 @@ def create_p_and_gt(content, repo_of_images, dict, mode='peak'):
             rcnn_output_individual[:, 21:] = all_class_boxes[:, :-2]
             rcnn_output.append(rcnn_output_individual)
             all_width_and_height.append(np.asarray([width, height]))
+            all_boxes_all_images.append(all_boxes)
         else:
             rcnn_output.append(np.asarray([]))  # we add an empty array just to have everything synchronized
             all_width_and_height.append(np.asarray([width, height]))
+            all_boxes_all_images.append(all_boxes)
 
-    return rcnn_output, ground_truth, all_width_and_height
+    return rcnn_output, ground_truth, all_width_and_height, all_boxes_all_images
 
 
 def bb_intersection_over_union(boxA, boxB):
@@ -439,7 +454,7 @@ def create_background_peak_array():
     return np.array([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
 
 
-def postprocess_all_images(p, gt, width_and_height):
+def postprocess_all_images(p, gt, width_and_height, all_boxes, false_positives=False, false_negatives=False):
     """
     This function iterates over all images, calling postprocess
     :param p: data structure containing information given from rcnn
@@ -450,7 +465,7 @@ def postprocess_all_images(p, gt, width_and_height):
     number_of_images = len(p)
     info_all_images = []
     for i in xrange(number_of_images):
-        info_all_images.append(postprocess(p[i], gt[i], width_and_height[i], false_positives=False, false_negatives=False))
+        info_all_images.append(postprocess(p[i], gt[i], width_and_height[i], all_boxes[i], false_positives=false_positives, false_negatives=false_negatives))
     return info_all_images
 
 
@@ -466,6 +481,6 @@ if __name__ == "__main__":
 
     net.cuda()
     net.eval()
-    train_mode = 1  # 1 if on train mode, 0 on test mode
+    train_mode = 0  # 1 if on train mode, 0 on test mode
     serialize = 1  # 0 if you just want to load the data, 1 if you want to process it
     main(train=train_mode, serialize=serialize)
