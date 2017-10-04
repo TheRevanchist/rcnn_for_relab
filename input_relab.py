@@ -97,8 +97,8 @@ def main(train=1, serialize=1):
             gt = pickle.load(f)
         with open('width_and_height_test.pickle', 'rb') as f:
             width_and_height = pickle.load(f)
-        with open('all_boxes_all_images_test.pickle', 'wb') as f:
-            pickle.dump(all_boxes_all_images, f, pickle.HIGHEST_PROTOCOL)
+        with open('all_boxes_all_images_test.pickle', 'rb') as f:
+            all_boxes_all_images = pickle.load(f)
 
         if serialize:
             info_all_images = []
@@ -155,7 +155,6 @@ def remove_background(p):
             new_p.append(np.zeros((0, 0)))
             new_rect.append(np.zeros((0, 0)))
     return new_p, new_rect
-
 
 
 def get_filenames_of_set(train_set):
@@ -482,5 +481,5 @@ if __name__ == "__main__":
     net.cuda()
     net.eval()
     train_mode = 0  # 1 if on train mode, 0 on test mode
-    serialize = 1  # 0 if you just want to load the data, 1 if you want to process it
+    serialize = 0  # 0 if you just want to load the data, 1 if you want to process it
     main(train=train_mode, serialize=serialize)
