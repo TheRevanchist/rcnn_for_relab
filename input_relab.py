@@ -40,7 +40,7 @@ def main(train=1, serialize=1):
     if train:
         if serialize:
             content = get_filenames_of_set(train_set)
-            p, gt, width_and_height, all_boxes_all_images = create_p_and_gt(content, repo_of_images, classes_dict, distribution_mode)
+            p, gt, width_and_height, all_boxes_all_images, p_binary = create_p_and_gt(content, repo_of_images, classes_dict, distribution_mode)
 
             # dump data structures into pickle files
             with open('p_trainval.pickle', 'wb') as f:
@@ -51,6 +51,8 @@ def main(train=1, serialize=1):
                 pickle.dump(width_and_height, f, pickle.HIGHEST_PROTOCOL)
             with open('all_boxes_all_images_trainval.pickle', 'wb') as f:
                 pickle.dump(all_boxes_all_images, f, pickle.HIGHEST_PROTOCOL)
+            with open('p_binary_trainval.pickle', 'wb') as f:
+                pickle.dump(p_binary, f, pickle.HIGHEST_PROTOCOL)
 
         # load the pickle files
         with open('p_trainval.pickle', 'rb') as f:
@@ -59,26 +61,28 @@ def main(train=1, serialize=1):
             gt = pickle.load(f)
         with open('width_and_height_traival.pickle', 'rb') as f:
             width_and_height = pickle.load(f)
-        with open('all_boxes_all_images_trainval.pickle', 'wb') as f:
-            pickle.dump(all_boxes_all_images, f, pickle.HIGHEST_PROTOCOL)
+        with open('all_boxes_all_images_trainval.pickle', 'rb') as f:
+            all_boxes_all_images = pickle.load(f)
+        with open('p_binary_trainval.pickle', 'rb') as f:
+            p_binary = pickle.load(f)
 
 
         if serialize:
             # do the matching between rcnn results and the ground truth
-            info_all_images = postprocess_all_images(p, gt, width_and_height, all_boxes_all_images, false_positives=False, false_negatives=False)
+            info_all_images = postprocess_all_images(p, gt, width_and_height, all_boxes_all_images, p_binary, false_positives=False, false_negatives=False)
 
             # pickle the final data structure
-            with open('train_k_peak_nofp_nofn.pickle', 'wb') as f:
+            with open('train_k_peak_softmax_nofp_nofn_including_binary_thresholded_iou.pickle', 'wb') as f:
                 pickle.dump(info_all_images, f, pickle.HIGHEST_PROTOCOL)
 
         # load the final data structure
-        with open('train_k_peak_softmax_nofp_nofn.pickle', 'rb') as f:
+        with open('train_k_peak_softmax_nofp_nofn_including_binary_thresholded_iou.pickle', 'rb') as f:
             info_all_images = pickle.load(f)
 
     else:
         if serialize:
             content = get_filenames_of_set(test_set)
-            p, gt, width_and_height, all_boxes_all_images = create_p_and_gt(content, repo_of_images, classes_dict, distribution_mode)
+            p, gt, width_and_height, all_boxes_all_images, p_binary = create_p_and_gt(content, repo_of_images, classes_dict, distribution_mode)
 
             # dump data structures into pickle files
             with open('p_test.pickle', 'wb') as f:
@@ -89,6 +93,8 @@ def main(train=1, serialize=1):
                 pickle.dump(width_and_height, f, pickle.HIGHEST_PROTOCOL)
             with open('all_boxes_all_images_test.pickle', 'wb') as f:
                 pickle.dump(all_boxes_all_images, f, pickle.HIGHEST_PROTOCOL)
+            with open('p_binary_test.pickle', 'wb') as f:
+                pickle.dump(p_binary, f, pickle.HIGHEST_PROTOCOL)
 
         # load the pickle files
         with open('p_test.pickle', 'rb') as f:
@@ -99,6 +105,8 @@ def main(train=1, serialize=1):
             width_and_height = pickle.load(f)
         with open('all_boxes_all_images_test.pickle', 'rb') as f:
             all_boxes_all_images = pickle.load(f)
+        with open('p_binary_test.pickle', 'rb') as f:
+            p_binary = pickle.load(f)
 
         if serialize:
             info_all_images = []
@@ -122,13 +130,14 @@ def main(train=1, serialize=1):
                 new_data.append(new_rect_gt)
                 new_data.append(new_width_and_height)
                 new_data.append(all_boxes_all_images[i])
+                new_data.append(p_binary[i])
                 info_all_images.append(new_data)
 
-            with open('info_all_images_test.pickle', 'wb') as f:
+            with open('info_all_images_test_thresholded_iou.pickle', 'wb') as f:
                 pickle.dump(info_all_images, f, pickle.HIGHEST_PROTOCOL)
 
         # load the final data structure
-        with open('info_all_images_test.pickle', 'rb') as f:
+        with open('info_all_images_test_thresholded_iou.pickle', 'rb') as f:
             info_all_images = pickle.load(f)
 
     print("Done")
@@ -266,6 +275,8 @@ def create_p_and_gt(content, repo_of_images, dict, mode='peak'):
     all_width_and_height = []
     all_boxes_all_images = []
 
+    rcnn_output_binary = []
+
     for image_name in content:
         im = cv2.imread(os.path.join(repo_of_images, image_name + ".jpg"))
         xml_file = os.path.join(repo_of_ground_truth, image_name + ".xml")
@@ -289,15 +300,20 @@ def create_p_and_gt(content, repo_of_images, dict, mode='peak'):
             rcnn_output_individual = np.zeros((len(all_scores), 25))
             rcnn_output_individual[:, :21] = all_scores
             rcnn_output_individual[:, 21:] = all_class_boxes[:, :-2]
+            rcnn_output_binary_individual = np.zeros((len(all_scores), 2))
+            rcnn_output_binary_individual[:, 0] = all_class_boxes[:, -2]
+            rcnn_output_binary_individual[:, 1] = 1. - rcnn_output_binary_individual[:, 0]
             rcnn_output.append(rcnn_output_individual)
+            rcnn_output_binary.append(rcnn_output_binary_individual)
             all_width_and_height.append(np.asarray([width, height]))
             all_boxes_all_images.append(all_boxes)
         else:
             rcnn_output.append(np.asarray([]))  # we add an empty array just to have everything synchronized
+            rcnn_output_binary.append(np.asarray([]))
             all_width_and_height.append(np.asarray([width, height]))
             all_boxes_all_images.append(all_boxes)
 
-    return rcnn_output, ground_truth, all_width_and_height, all_boxes_all_images
+    return rcnn_output, ground_truth, all_width_and_height, all_boxes_all_images, rcnn_output_binary
 
 
 def bb_intersection_over_union(boxA, boxB):
@@ -334,7 +350,7 @@ def bb_intersection_over_union(boxA, boxB):
         return iou
 
 
-def postprocess(p, gt, width_and_height, false_positives=False, false_negatives=False):
+def postprocess(p, gt, width_and_height, p_binary, false_positives=False, false_negatives=False):
     """
     This function does matching and then postprocessing of p's and gt's
     :param p: the objects given from rcnn
@@ -354,14 +370,22 @@ def postprocess(p, gt, width_and_height, false_positives=False, false_negatives=
     new_gt = []
     new_rects_p = []
     new_rects_gt = []
+    new_p_binary = []
+    new_gt_binary = []
+
+    threshold = 0.5
 
     # on this part we create the real matches between p and gt
     for _ in xrange(max_number_of_matches):
         best_match = unravel_index(matching_table.argmax(), matching_table.shape)
-        if matching_table[best_match[0], best_match[1]]: # check if it is a different value from 0
+        if matching_table[best_match[0], best_match[1]] > threshold: # check if it is a different value from 0
             matching_table[best_match[0], :] = 0.
             matching_table[:, best_match[1]] = 0.
             new_p.append(p[best_match[0], :21])
+
+            new_p_binary.append(p_binary[best_match[0]])
+            new_gt_binary.append(np.array([1., 0.]))
+
             new_rects_p.append(p[best_match[0], 21:])
             new_gt.append(gt[best_match[1], :21])
             new_rects_gt.append(gt[best_match[1], 21:])
@@ -373,16 +397,20 @@ def postprocess(p, gt, width_and_height, false_positives=False, false_negatives=
     if false_positives:
         for element in elements_in_p:
             new_p.append(p[element, :21])
+            new_p_binary.append(p_binary[element])
             new_rects_p.append(p[element, 21:])
             new_gt.append(create_background_peak_array())
+            new_gt_binary.append(np.array([0., 1.]))  # 0 - not background; 1 - background
             new_rects_gt.append(p[element, 21:])
 
     # here we deal with false negatives, by adding them as r-cnn outputs equal to the ground truth
     if false_negatives:
         for element in elements_in_gt:
             new_p.append(gt[element, :21])
+            new_p_binary.append(np.array([1., 0.]))
             new_rects_p.append(gt[element, 21:])
             new_gt.append(gt[element, :21])
+            new_gt_binary.append((np.array([1., 0.])))
             new_rects_gt.append(gt[element, 21:])
 
     # convert all the lists to numpy arrays
@@ -392,7 +420,7 @@ def postprocess(p, gt, width_and_height, false_positives=False, false_negatives=
     new_rects_gt = np.asarray(new_rects_gt)
 
     # add all the postprocessed information to a list
-    info_image = [new_p, new_gt, new_rects_p, new_rects_gt, width_and_height]
+    info_image = [new_p, new_gt, new_rects_p, new_rects_gt, width_and_height, new_p_binary, new_gt_binary]
 
     return info_image
 
@@ -453,7 +481,7 @@ def create_background_peak_array():
     return np.array([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
 
 
-def postprocess_all_images(p, gt, width_and_height, all_boxes, false_positives=False, false_negatives=False):
+def postprocess_all_images(p, gt, width_and_height, all_boxes, p_binary, false_positives=False, false_negatives=False):
     """
     This function iterates over all images, calling postprocess
     :param p: data structure containing information given from rcnn
@@ -464,7 +492,8 @@ def postprocess_all_images(p, gt, width_and_height, all_boxes, false_positives=F
     number_of_images = len(p)
     info_all_images = []
     for i in xrange(number_of_images):
-        info_all_images.append(postprocess(p[i], gt[i], width_and_height[i], all_boxes[i], false_positives=false_positives, false_negatives=false_negatives))
+        info_all_images.append(postprocess(p[i], gt[i], width_and_height[i], p_binary[i],
+                                           false_positives=false_positives, false_negatives=false_negatives))
     return info_all_images
 
 
@@ -480,6 +509,6 @@ if __name__ == "__main__":
 
     net.cuda()
     net.eval()
-    train_mode = 0  # 1 if on train mode, 0 on test mode
-    serialize = 0  # 0 if you just want to load the data, 1 if you want to process it
+    train_mode = 1  # 1 if on train mode, 0 on test mode
+    serialize = 1  # 0 if you just want to load the data, 1 if you want to process it
     main(train=train_mode, serialize=serialize)
